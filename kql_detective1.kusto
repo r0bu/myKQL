@@ -1,0 +1,12 @@
+Books
+| where book_title == "De Revolutionibus Magnis Data"
+
+Shelves
+| where rf_ids has "0cbc13e0aa7d487e8e797d3de3823161"
+
+Shelves
+| mv-expand rf_id = rf_ids to typeof(string)
+| lookup Books on rf_id
+| summarize expectedWeight=sum(weight_gram) by shelf, total_weight
+| extend missingWeight = total_weight - expectedWeight
+| sort by missingWeight desc
