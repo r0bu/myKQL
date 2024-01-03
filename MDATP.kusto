@@ -1,0 +1,5 @@
+let timeframe = 14d;
+DeviceFileEvents
+| where Timestamp >= ago(timeframe)
+| where ActionType == "FileRenamed" and FolderPath contains "C:\\Windows\\System32\\"
+| where InitiatingProcessTokenElevation == "TokenElevationTypeFull"
