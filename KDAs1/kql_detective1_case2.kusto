@@ -1,0 +1,29 @@
+// Query that counts the votes:
+Votes
+| summarize Count=count() by vote
+| as hint.materialized=true T
+| extend Total = toscalar(T | summarize sum(Count))
+| project vote, Percentage = round(Count*100.0 / Total, 1), Count
+| order by Count
+
+//Entire query below identifies the voting proxies with anomalous numbers and excludes them from the above query
+
+// start by creating a variable to be used in query
+let compromisedProxies = Votes
+// first identify all votes for Poppy
+| where vote == 'Poppy'
+// the votes are 'binned' into 1 hour chunks
+| summarize Count = count() by bin(Timestamp, 1h), via_ip
+// the results highlight some significant numbers, so we make a list of all the counts, and timestamps, based on via_IP; there are 10k proxies
+| summarize votesPoppy = make_list(Count), Timestamp = make_list(Timestamp) by via_ip
+| extend outliers = series_decompose_anomalies(votesPoppy)
+| mv-expand Timestamp, votesPoppy, outliers
+| where outliers == 1
+| distinct via_ip;
+Votes
+| where not(via_ip in (compromisedProxies) and vote == 'Poppy')
+| summarize Count=count() by vote
+| as hint.materialized=true T
+| extend Total = toscalar(T | summarize sum(Count))
+| project vote, Percentage = round(Count*100.0 / Total, 1), Count
+| order by Count
