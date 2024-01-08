@@ -1,4 +1,4 @@
-// Query that counts the votes:
+// Query supplied by KDA which counts the votes:
 Votes
 | summarize Count=count() by vote
 | as hint.materialized=true T
@@ -8,21 +8,29 @@ Votes
 
 //Entire query below identifies the voting proxies with anomalous numbers and excludes them from the above query
 
-// start by creating a variable to be used in query
+// Start by creating a variable to be used in final query, working on assumption some voting proxies are compromised
 let compromisedProxies = Votes
 // first identify all votes for Poppy
 | where vote == 'Poppy'
-// the votes are 'binned' into 1 hour chunks
+// the votes are then 'binned' into 1 hour chunks
 | summarize Count = count() by bin(Timestamp, 1h), via_ip
-// the results highlight some significant numbers, so we make a list of all the counts, and timestamps, based on via_IP; there are 10k proxies
+// the results highlight some significant numbers for each hour, so we make a list of all (count) votes for Poppy, and a list timestamps, based on proxy servers (via_IP)
 | summarize votesPoppy = make_list(Count), Timestamp = make_list(Timestamp) by via_ip
+// once done we need a new column to identify outliers, this is where the magic happens, using the series_decompose command on the votesPoppy column
 | extend outliers = series_decompose_anomalies(votesPoppy)
+// next we need to expand the Timestamp, votesPoppy again, with the newly created outliers column
 | mv-expand Timestamp, votesPoppy, outliers
+// we use a where command to select only the outlier columns
 | where outliers == 1
+// finally, we identify the compromised voting proxies, based on outliers, and hand this off to our new query
 | distinct via_ip;
+// selecting the schema
 Votes
+// now we're going to select all the results with the exception on the compromised proxies with votes for poppy
 | where not(via_ip in (compromisedProxies) and vote == 'Poppy')
+// we can now summarise this count to return more accurate figures. Obviously at this point, we're assuming only Poppy cheated...
 | summarize Count=count() by vote
+// I don't really need to annotate this bit as it was used in the original KDA query (above).
 | as hint.materialized=true T
 | extend Total = toscalar(T | summarize sum(Count))
 | project vote, Percentage = round(Count*100.0 / Total, 1), Count
